@@ -1,6 +1,7 @@
 package com.example.qr_wallet
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Log
@@ -28,6 +29,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.example.qr_wallet.ui.theme.QrwalletTheme
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 
 class MainActivity : ComponentActivity() {
     private val qrCodes = mutableStateListOf<String>()
@@ -38,6 +41,12 @@ class MainActivity : ComponentActivity() {
             openCamera()
         } else {
             Log.d("Camera", "Berechtigung verweigert")
+        }
+    }
+
+    private val scanQRCodeLauncher = registerForActivityResult(ScanContract()) { result ->
+        if (result.contents != null) {
+            qrCodes.add(result.contents)
         }
     }
 
@@ -69,10 +78,12 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun openCamera() {
-        // Hier würdest du die Kamera öffnen und den QR-Code-Scanner starten
-        // Nach erfolgreichem Scan kannst du den QR-Code zur Liste hinzufügen
-        // Für Testzwecke fügen wir einen Dummy-Code hinzu
-        qrCodes.add("QR-Code ${qrCodes.size + 1}")
+        val options = ScanOptions()
+        options.setPrompt("QR-Code scannen")
+        options.setBeepEnabled(true)
+        options.setOrientationLocked(false)
+        options.setBarcodeImageEnabled(true)
+        scanQRCodeLauncher.launch(options)
     }
 }
 
