@@ -222,6 +222,49 @@ fun QRWalletApp(
                 actions = {
                     if (isSelectionMode) {
                         if (selectedCodes.isNotEmpty()) {
+                            // Move buttons - only enabled when exactly one item is selected
+                            IconButton(
+                                onClick = {
+                                    if (selectedCodes.size == 1) {
+                                        val selectedId = selectedCodes.first()
+                                        val index = qrCodes.indexOfFirst { it.id == selectedId }
+                                        if (index > 0) {
+                                            onReorderCodes(index, index - 1)
+                                        }
+                                    }
+                                },
+                                enabled = selectedCodes.size == 1 && qrCodes.indexOfFirst { it.id == selectedCodes.first() } > 0
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.KeyboardArrowUp,
+                                    contentDescription = "Move selected item up",
+                                    tint = if (selectedCodes.size == 1 && qrCodes.indexOfFirst { it.id == selectedCodes.first() } > 0)
+                                          MaterialTheme.colorScheme.onSurfaceVariant
+                                          else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+                                )
+                            }
+
+                            IconButton(
+                                onClick = {
+                                    if (selectedCodes.size == 1) {
+                                        val selectedId = selectedCodes.first()
+                                        val index = qrCodes.indexOfFirst { it.id == selectedId }
+                                        if (index < qrCodes.size - 1) {
+                                            onReorderCodes(index, index + 1)
+                                        }
+                                    }
+                                },
+                                enabled = selectedCodes.size == 1 && qrCodes.indexOfFirst { it.id == selectedCodes.first() } < qrCodes.size - 1
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.KeyboardArrowDown,
+                                    contentDescription = "Move selected item down",
+                                    tint = if (selectedCodes.size == 1 && qrCodes.indexOfFirst { it.id == selectedCodes.first() } < qrCodes.size - 1)
+                                          MaterialTheme.colorScheme.onSurfaceVariant
+                                          else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+                                )
+                            }
+
                             IconButton(onClick = { showDeleteDialog = true }) {
                                 Icon(Icons.Default.Delete, contentDescription = "Delete Selected")
                             }
@@ -498,22 +541,6 @@ fun QRCodeItem(
 
                             Button(onClick = { showQRCode = !showQRCode }) {
                                 Text(if (showQRCode) "Hide" else "Show")
-                            }
-
-                            // Move handle to the end in normal mode
-                            IconButton(onClick = { onMoveUp() }) {
-                                Icon(
-                                    imageVector = Icons.Default.KeyboardArrowUp,
-                                    contentDescription = "Move item up",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            IconButton(onClick = { onMoveDown() }) {
-                                Icon(
-                                    imageVector = Icons.Default.KeyboardArrowDown,
-                                    contentDescription = "Move item down",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
                             }
                         }
                     }
