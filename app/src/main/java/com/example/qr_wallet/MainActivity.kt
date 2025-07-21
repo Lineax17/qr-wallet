@@ -11,8 +11,10 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,11 +23,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -34,6 +39,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -107,12 +114,12 @@ class MainActivity : ComponentActivity() {
         codesWriter = CodesWriter(this)
         appMigration = AppMigration(this)
 
-        // Prüfe und führe Migration durch falls nötig
+        // Check and perform migration if needed
         appMigration.checkAndMigrateIfNeeded()
 
         enableEdgeToEdge()
         setContent {
-            // Lade gespeicherte QR-Codes beim Start
+            // Load saved QR codes on startup
             LaunchedEffect(Unit) {
                 val savedCodes = codesWriter.loadQRCodes()
                 qrCodes.clear()
@@ -318,15 +325,23 @@ fun QRCodeList(
     onReorder: (Int, Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var draggedIndex by remember { mutableStateOf(-1) }
+    var dragOffset by remember { mutableStateOf(0f) }
+
     LazyColumn(
-        modifier = modifier.fillMaxSize()
+        modifier = modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         itemsIndexed(qrCodes, key = { _, code -> code.id }) { index, code ->
+            val isDragging = draggedIndex == index
+
             QRCodeItem(
                 code = code,
+                index = index,
+                totalItems = qrCodes.size,
                 isSelectionMode = isSelectionMode,
                 isSelected = code.id in selectedCodes,
-                isAlternate = index % 2 == 1, // Alternierender Hintergrund
+                isAlternate = index % 2 == 1,
                 onSelectionChange = { isSelected ->
                     onSelectionChange(
                         if (isSelected) {
@@ -336,9 +351,25 @@ fun QRCodeList(
                         }
                     )
                 },
-                onLongPress = { onLongPress(code.id) },
+                onLongPress = {
+                    if (!isSelectionMode) {
+                        onLongPress(code.id)
+                    }
+                },
                 onRename = onRename,
-                modifier = Modifier.animateItemPlacement()
+                onMoveUp = {
+                    if (index > 0) {
+                        onReorder(index, index - 1)
+                    }
+                },
+                onMoveDown = {
+                    if (index < qrCodes.size - 1) {
+                        onReorder(index, index + 1)
+                    }
+                },
+                modifier = Modifier
+                    .animateItemPlacement()
+                    .padding(horizontal = 4.dp)
             )
         }
     }
@@ -348,12 +379,18 @@ fun QRCodeList(
 @Composable
 fun QRCodeItem(
     code: QRCodeData,
+    index: Int = 0, // New parameter for item index
+    totalItems: Int = 1, // New parameter for total number of items
     isSelectionMode: Boolean,
     isSelected: Boolean,
-    isAlternate: Boolean = false, // Neuer Parameter für alternierenden Hintergrund
+    isAlternate: Boolean = false, // New parameter for alternating background
+    isDragging: Boolean = false, // New parameter to indicate dragging state
+    dragOffset: Float = 0f, // New parameter for drag offset
     onSelectionChange: (Boolean) -> Unit,
     onLongPress: () -> Unit,
     onRename: (String, String) -> Unit,
+    onMoveUp: () -> Unit = {}, // New parameter for move up action
+    onMoveDown: () -> Unit = {}, // New parameter for move down action
     modifier: Modifier = Modifier
 ) {
     var isEditing by remember { mutableStateOf(false) }
@@ -362,17 +399,19 @@ fun QRCodeItem(
     var newName by remember { mutableStateOf(code.name) }
     val keyboardController = LocalSoftwareKeyboardController.current
 
-    // Bestimme die Kartenfarbe basierend auf Zustand - verbesserte Logik
+    // Determine card color based on state - improved logic with dragging effect
     val cardColor = when {
+        isDragging -> MaterialTheme.colorScheme.tertiaryContainer // Special color for dragging
         isSelected -> MaterialTheme.colorScheme.primaryContainer
-        isAlternate -> MaterialTheme.colorScheme.surfaceContainer // Bessere Sichtbarkeit
+        isAlternate -> MaterialTheme.colorScheme.surfaceContainer // Better visibility
         else -> MaterialTheme.colorScheme.surface
     }
 
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 4.dp) // Reduziert Padding für bessere Sichtbarkeit
+            .padding(horizontal = 8.dp, vertical = 4.dp) // Reduced padding for better visibility
+            .offset(y = dragOffset.dp) // Apply drag offset
             .combinedClickable(
                 onClick = {
                     if (isSelectionMode) {
@@ -389,7 +428,7 @@ fun QRCodeItem(
             containerColor = cardColor
         ),
         elevation = CardDefaults.cardElevation(
-            defaultElevation = if (isAlternate) 2.dp else 1.dp // Subtile Elevation-Unterschiede
+            defaultElevation = if (isDragging) 8.dp else if (isAlternate) 2.dp else 1.dp // Higher elevation when dragging
         )
     ) {
         Column(
@@ -460,15 +499,23 @@ fun QRCodeItem(
                             Button(onClick = { showQRCode = !showQRCode }) {
                                 Text(if (showQRCode) "Hide" else "Show")
                             }
-                        }
-                    }
 
-                    if (isSelectionMode) {
-                        Icon(
-                            imageVector = Icons.Default.Menu,
-                            contentDescription = "Drag to reorder",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                            // Move handle to the end in normal mode
+                            IconButton(onClick = { onMoveUp() }) {
+                                Icon(
+                                    imageVector = Icons.Default.KeyboardArrowUp,
+                                    contentDescription = "Move item up",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            IconButton(onClick = { onMoveDown() }) {
+                                Icon(
+                                    imageVector = Icons.Default.KeyboardArrowDown,
+                                    contentDescription = "Move item down",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -498,7 +545,7 @@ fun QRCodeItem(
         }
     }
 
-    // Vollbild-QR-Code Dialog
+    // Fullscreen QR Code Dialog
     if (showFullscreenQR) {
         QRCodeFullscreenDialog(
             code = code,
@@ -525,17 +572,17 @@ fun QRCodeFullscreenDialog(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp), // Extra Padding für bessere Zentrierung
+                    .padding(16.dp), // Extra padding for better centering
                 contentAlignment = Alignment.Center
             ) {
                 val qrBitmap = remember(code.content) {
-                    generateQRCode(code.content, 400) // Deutlich größer: 600dp statt 400dp
+                    generateQRCode(code.content, 500) // Larger size for fullscreen display
                 }
                 qrBitmap?.let { bitmap ->
                     Image(
                         bitmap = bitmap.asImageBitmap(),
                         contentDescription = "Full size QR Code for ${code.name}",
-                        modifier = Modifier.size(400.dp) // Größere Vollbildanzeige
+                        modifier = Modifier.size(500.dp) // Larger fullscreen display
                     )
                 }
             }

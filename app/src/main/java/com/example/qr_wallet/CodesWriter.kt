@@ -66,13 +66,13 @@ class CodesWriter(private val context: Context) {
     suspend fun addQRCode(content: String, existingCodes: List<QRCodeData>): QRCodeData {
         return withContext(Dispatchers.IO) {
             try {
-                // Verhindere Duplikate
+                // Prevent duplicates
                 val existing = existingCodes.find { it.content == content }
                 if (existing != null) {
                     return@withContext existing
                 }
 
-                // Erstelle neue QR-Code-Daten mit automatischem Namen
+                // Create new QR code data with automatic name
                 val newId = generateId()
                 val newName = "QR Code ${existingCodes.size + 1}"
                 val newCode = QRCodeData(

@@ -47,7 +47,7 @@ class AppMigration(private val context: Context) {
                 val content = versionFile.readText()
                 json.decodeFromString<AppVersionInfo>(content)
             } else {
-                // Erste Installation - erstelle Standardversion
+                // First installation - create default version
                 AppVersionInfo()
             }
         } catch (e: Exception) {
@@ -66,39 +66,39 @@ class AppMigration(private val context: Context) {
     }
 
     private fun performMigration(fromVersion: Int, toVersion: Int) {
-        // Hier können spezifische Migrationen für verschiedene Versionen implementiert werden
+        // Here specific migrations for different versions can be implemented
 
         when {
             fromVersion < 1 && toVersion >= 1 -> {
-                // Migration für Version 1.0.0
+                // Migration for version 1.0.0
                 migrateToVersion1()
             }
-            // Zukünftige Migrationen können hier hinzugefügt werden
+            // Future migrations can be added here
             // fromVersion < 2 && toVersion >= 2 -> migrateToVersion2()
         }
     }
 
     private fun migrateToVersion1() {
-        // Diese Migration stellt sicher, dass die QR-Codes-Datei existiert und korrekt formatiert ist
+        // This migration ensures that the QR codes file exists and is correctly formatted
         val qrCodesFile = File(context.filesDir, "qr_codes.json")
 
         if (!qrCodesFile.exists()) {
-            // Erstelle leere QR-Codes-Datei für neue Installationen
+            // Create empty QR codes file for new installations
             qrCodesFile.writeText("[]")
             Log.i(TAG, "Created empty QR codes file for new installation")
         } else {
-            // Validiere und repariere vorhandene QR-Codes-Datei
+            // Validate and repair existing QR codes file
             try {
                 val content = qrCodesFile.readText()
-                // Versuche zu parsen um Gültigkeit zu prüfen
+                // Try to parse to check validity
                 Json.decodeFromString<List<Map<String, String>>>(content)
                 Log.i(TAG, "QR codes file is valid")
             } catch (e: Exception) {
                 Log.w(TAG, "QR codes file is corrupted, creating backup and resetting", e)
-                // Erstelle Backup der beschädigten Datei
+                // Create backup of the corrupted file
                 val backupFile = File(context.filesDir, "qr_codes_backup_${System.currentTimeMillis()}.json")
                 qrCodesFile.copyTo(backupFile)
-                // Erstelle neue leere Datei
+                // Create new empty file
                 qrCodesFile.writeText("[]")
             }
         }
