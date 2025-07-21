@@ -83,11 +83,75 @@ import com.google.zxing.WriterException
 import com.google.zxing.qrcode.QRCodeWriter
 import kotlinx.coroutines.launch
 
+/**
+ * Main activity for the QR Wallet application.
+ *
+ * This activity serves as the entry point for the QR Wallet application, providing
+ * a comprehensive interface for managing QR codes. The application allows users to:
+ * - Scan QR codes using the device camera
+ * - Store QR codes locally with custom names
+ * - Display QR codes in both normal and fullscreen modes
+ * - Edit QR code names inline
+ * - Delete single or multiple QR codes
+ * - Reorder QR codes in the list
+ * - View app version information
+ *
+ * The activity follows MVVM-like patterns with Jetpack Compose for the UI layer
+ * and maintains state using mutableStateListOf for reactive updates. All data
+ * is stored locally using JSON file persistence through the CodesWriter class.
+ *
+ * Key features:
+ * - Camera permission management for QR code scanning
+ * - Portrait-oriented QR code scanning with custom capture activity
+ * - Selection mode for bulk operations (delete, reorder)
+ * - Automatic QR code naming with sequential numbering
+ * - Material Design 3 UI with alternating list item backgrounds
+ * - App migration support for version updates
+ * - Comprehensive error handling and logging
+ *
+ * @author QR Wallet Development Team
+ * @version 1.0
+ * @since API level 24
+ */
 class MainActivity : ComponentActivity() {
+
+    /**
+     * Reactive list of QR codes displayed in the UI.
+     * Uses mutableStateListOf for automatic recomposition when items are added,
+     * removed, or modified. Each QRCodeData object contains:
+     * - id: Unique identifier (UUID)
+     * - content: The actual QR code data/URL
+     * - name: User-friendly display name
+     * - timestamp: Creation time in milliseconds
+     */
     private val qrCodes = mutableStateListOf<QRCodeData>()
+
+    /**
+     * File-based persistence manager for QR codes.
+     * Handles JSON serialization/deserialization and provides methods for
+     * saving, loading, and updating QR code data. Thread-safe operations
+     * are ensured through coroutines and proper context switching.
+     */
     private lateinit var codesWriter: CodesWriter
+
+    /**
+     * App migration manager for handling version updates.
+     * Responsible for detecting version changes and performing necessary
+     * data migrations or updates. Ensures backward compatibility when
+     * app structure or data formats change between versions.
+     */
     private lateinit var appMigration: AppMigration
 
+    /**
+     * Activity result launcher for requesting camera permission.
+     *
+     * This launcher handles the runtime permission request for camera access,
+     * which is required for QR code scanning functionality. Upon permission
+     * grant, it automatically initiates the QR scanning process. If permission
+     * is denied, the action is logged for debugging purposes.
+     *
+     * @see android.Manifest.permission.CAMERA
+     */
     private val requestCameraPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
@@ -98,6 +162,24 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Activity result launcher for QR code scanning.
+     *
+     * This launcher handles the QR code scanning process using the ZXing library.
+     * When a QR code is successfully scanned, it automatically creates a new
+     * QRCodeData entry with an auto-generated name and adds it to the list.
+     * Duplicate detection is performed based on content to prevent redundant entries.
+     *
+     * The scanning process:
+     * 1. Launches custom capture activity (MyCaptureActivity)
+     * 2. Receives scanned content in result.contents
+     * 3. Generates unique name based on existing QR codes count
+     * 4. Creates new QRCodeData object with UUID
+     * 5. Adds to reactive list if not duplicate
+     *
+     * @see com.journeyapps.barcodescanner.ScanContract
+     * @see MyCaptureActivity
+     */
     private val scanQRCodeLauncher = registerForActivityResult(ScanContract()) { result ->
         if (result.contents != null) {
             lifecycleScope.launch {
@@ -109,29 +191,60 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Called when the activity is first created.
+     *
+     * This method performs the complete initialization sequence for the application:
+     *
+     * 1. **Dependency Initialization**: Creates CodesWriter and AppMigration instances
+     *    with proper context binding for file system access.
+     *
+     * 2. **Migration Check**: Automatically detects if app has been updated and
+     *    performs any necessary data migrations to maintain compatibility.
+     *
+     * 3. **UI Setup**: Enables edge-to-edge display and initializes Jetpack Compose
+     *    UI with proper theming and state management.
+     *
+     * 4. **Data Loading**: Uses LaunchedEffect to asynchronously load saved QR codes
+     *    from persistent storage on first composition.
+     *
+     * The method ensures proper error handling throughout the initialization process
+     * and logs relevant information for debugging purposes.
+     *
+     * @param savedInstanceState Bundle containing activity's previously saved state,
+     *                          or null if this is a fresh start
+     */
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Initialize core dependencies with application context for proper lifecycle management
         codesWriter = CodesWriter(this)
         appMigration = AppMigration(this)
 
-        // Check and perform migration if needed
+        // Perform version-based migration check to ensure data compatibility
+        // This handles scenarios where app structure changes between versions
         appMigration.checkAndMigrateIfNeeded()
 
+        // Enable modern Android UI with edge-to-edge display
         enableEdgeToEdge()
+
         setContent {
-            // Load saved QR codes on startup
+            // Asynchronously load persisted QR codes on initial composition
+            // Uses LaunchedEffect to ensure this only runs once per activity lifecycle
             LaunchedEffect(Unit) {
                 val savedCodes = codesWriter.loadQRCodes()
                 qrCodes.clear()
                 qrCodes.addAll(savedCodes)
             }
 
+            // Apply consistent Material Design 3 theming throughout the app
             QrwalletTheme {
                 QRWalletApp(
                     qrCodes = qrCodes,
                     onAddClick = { checkCameraPermissionAndOpen() },
                     onRenameCode = { id, newName ->
                         lifecycleScope.launch {
+                            // Update both persistent storage and reactive UI state
                             codesWriter.updateQRCodeName(id, newName, qrCodes.toList())
                             val index = qrCodes.indexOfFirst { it.id == id }
                             if (index != -1) {
@@ -141,6 +254,7 @@ class MainActivity : ComponentActivity() {
                     },
                     onDeleteCodes = { idsToDelete ->
                         lifecycleScope.launch {
+                            // Remove from both storage and UI state atomically
                             val updatedCodes = qrCodes.filter { it.id !in idsToDelete }
                             codesWriter.saveQRCodes(updatedCodes)
                             qrCodes.clear()
@@ -149,6 +263,7 @@ class MainActivity : ComponentActivity() {
                     },
                     onReorderCodes = { fromIndex, toIndex ->
                         lifecycleScope.launch {
+                            // Perform list reordering and persist changes
                             val newList = qrCodes.toMutableList()
                             val item = newList.removeAt(fromIndex)
                             newList.add(toIndex, item)
@@ -163,6 +278,27 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Checks camera permission status and initiates QR code scanning.
+     *
+     * This method implements the Android 6.0+ runtime permission model for camera access.
+     * It first checks if the CAMERA permission is already granted, and if so, immediately
+     * opens the camera for QR scanning. If permission is not granted, it launches the
+     * permission request flow through the registered ActivityResultLauncher.
+     *
+     * Permission flow:
+     * 1. Check current permission status using ContextCompat.checkSelfPermission
+     * 2. If granted: Immediately call openCamera()
+     * 3. If not granted: Launch permission request dialog
+     * 4. Handle result in requestCameraPermission callback
+     *
+     * This method is typically called when the user taps the floating action button
+     * to add a new QR code via scanning.
+     *
+     * @see android.Manifest.permission.CAMERA
+     * @see requestCameraPermission
+     * @see openCamera
+     */
     private fun checkCameraPermissionAndOpen() {
         when {
             ContextCompat.checkSelfPermission(
@@ -177,13 +313,40 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Configures and launches the QR code scanning interface.
+     *
+     * This method creates a customized ScanOptions configuration optimized for
+     * QR code scanning in portrait orientation. The configuration includes:
+     *
+     * **Scan Options Configuration:**
+     * - Custom prompt text for user guidance
+     * - Audio feedback (beep) on successful scan
+     * - Portrait orientation lock for consistent UX
+     * - Barcode image capture enabled for debugging
+     * - Custom capture activity for enhanced control
+     *
+     * **Technical Details:**
+     * - Uses ZXing library's ScanContract for lifecycle-aware scanning
+     * - Employs MyCaptureActivity for consistent portrait behavior
+     * - Results are handled by scanQRCodeLauncher callback
+     * - Scanning session automatically terminates after successful capture
+     *
+     * The method ensures that the scanning interface follows Material Design
+     * guidelines and provides clear visual feedback to users.
+     *
+     * @see ScanOptions
+     * @see MyCaptureActivity
+     * @see scanQRCodeLauncher
+     */
     private fun openCamera() {
-        val options = ScanOptions()
-        options.setPrompt("Scan QR Code")
-        options.setBeepEnabled(true)
-        options.setOrientationLocked(true)
-        options.setBarcodeImageEnabled(true)
-        options.setCaptureActivity(MyCaptureActivity::class.java)
+        val options = ScanOptions().apply {
+            setPrompt("Scan QR Code")           // User-friendly instruction text
+            setBeepEnabled(true)                // Audio feedback for accessibility
+            setOrientationLocked(true)          // Maintain portrait orientation
+            setBarcodeImageEnabled(true)        // Enable image capture for debugging
+            setCaptureActivity(MyCaptureActivity::class.java)  // Custom capture implementation
+        }
         scanQRCodeLauncher.launch(options)
     }
 }
