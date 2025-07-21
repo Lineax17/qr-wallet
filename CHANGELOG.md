@@ -4,7 +4,8 @@ All notable changes to QR Wallet will be documented in this file.
 
 ## [0.0.1] - 2025-07-21
 
-#### First Beta Release
+### Deskription
+- First beta release of QR Wallet
 
 ### Added
 - QR Code scanning
