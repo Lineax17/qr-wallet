@@ -2,6 +2,15 @@
 
 All notable changes to QR Wallet will be documented in this file.
 
+## [0.0.2] - 2025-07-21
+
+### Deskription
+- Second beta release of QR Wallet
+
+### Added
+- QR Code deletion
+- Reorder QR codes
+
 ## [0.0.1] - 2025-07-21
 
 ### Deskription
