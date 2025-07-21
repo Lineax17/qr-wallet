@@ -1,7 +1,7 @@
 [versions]
 # App Version
-app-version-code = "1"
-app-version-name = "0.0.1"
+app-version-code = "2"
+app-version-name = "0.0.2"
 
 # Android SDK
 compileSdk = "35"
@@ -9,7 +9,7 @@ minSdk = "24"
 targetSdk = "35"
 
 # Dependencies
-agp = "8.7.3"
+agp = "8.11.1"
 kotlin = "2.1.0"
 coreKtx = "1.15.0"
 junit = "4.13.2"
