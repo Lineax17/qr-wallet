@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
@@ -28,9 +29,11 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -39,6 +42,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -52,9 +56,11 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import com.example.qr_wallet.data.migration.AppMigration
 import com.example.qr_wallet.ui.theme.QrwalletTheme
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
@@ -66,6 +72,7 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
     private val qrCodes = mutableStateListOf<QRCodeData>()
     private lateinit var codesWriter: CodesWriter
+    private lateinit var appMigration: AppMigration
 
     private val requestCameraPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -73,7 +80,7 @@ class MainActivity : ComponentActivity() {
         if (isGranted) {
             openCamera()
         } else {
-            Log.d("Camera", "Berechtigung verweigert")
+            Log.d("Camera", "Permission denied")
         }
     }
 
@@ -91,6 +98,11 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         codesWriter = CodesWriter(this)
+        appMigration = AppMigration(this)
+
+        // Prüfe und führe Migration durch falls nötig
+        appMigration.checkAndMigrateIfNeeded()
+
         enableEdgeToEdge()
         setContent {
             // Lade gespeicherte QR-Codes beim Start
@@ -112,7 +124,8 @@ class MainActivity : ComponentActivity() {
                                 qrCodes[index] = qrCodes[index].copy(name = newName)
                             }
                         }
-                    }
+                    },
+                    appVersion = appMigration.getCurrentVersion()
                 )
             }
         }
@@ -134,27 +147,44 @@ class MainActivity : ComponentActivity() {
 
     private fun openCamera() {
         val options = ScanOptions()
-        options.setPrompt("QR-Code scannen")
+        options.setPrompt("Scan QR Code")
         options.setBeepEnabled(true)
-        options.setOrientationLocked(true)  // Orientierung sperren
+        options.setOrientationLocked(true)
         options.setBarcodeImageEnabled(true)
-        options.setCaptureActivity(MyCaptureActivity::class.java)  // Benutzerdefinierte Activity verwenden
+        options.setCaptureActivity(MyCaptureActivity::class.java)
         scanQRCodeLauncher.launch(options)
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun QRWalletApp(
     qrCodes: List<QRCodeData>,
     onAddClick: () -> Unit,
-    onRenameCode: (String, String) -> Unit
+    onRenameCode: (String, String) -> Unit,
+    appVersion: String
 ) {
+    var showVersionInfo by remember { mutableStateOf(false) }
+
     Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("QR Wallet") },
+                actions = {
+                    IconButton(onClick = { showVersionInfo = true }) {
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = "App Info"
+                        )
+                    }
+                }
+            )
+        },
         floatingActionButton = {
             FloatingActionButton(onClick = onAddClick) {
                 Icon(
                     imageVector = Icons.Default.Add,
-                    contentDescription = "QR-Code hinzufügen"
+                    contentDescription = "Add QR Code"
                 )
             }
         }
@@ -174,6 +204,30 @@ fun QRWalletApp(
                     )
                 }
             }
+        }
+
+        // Version Info Dialog
+        if (showVersionInfo) {
+            AlertDialog(
+                onDismissRequest = { showVersionInfo = false },
+                title = { Text("App Information") },
+                text = {
+                    Column {
+                        Text("QR Wallet")
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Version: $appVersion")
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("A simple and secure QR code wallet for storing your QR codes locally.")
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("All data is stored locally on your device.")
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showVersionInfo = false }) {
+                        Text("OK")
+                    }
+                }
+            )
         }
     }
 }
@@ -205,109 +259,77 @@ fun QRCodeItem(
                     OutlinedTextField(
                         value = newName,
                         onValueChange = { newName = it },
-                        label = { Text("Name ändern") },
-                        keyboardOptions = KeyboardOptions.Default.copy(
-                            imeAction = ImeAction.Done
-                        ),
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                         keyboardActions = KeyboardActions(
                             onDone = {
-                                onRename(code.id, newName)
-                                isEditing = false
+                                if (newName.isNotBlank()) {
+                                    onRename(code.id, newName)
+                                    isEditing = false
+                                }
                                 keyboardController?.hide()
                             }
-                        ),
-                        modifier = Modifier.weight(1f)
+                        )
                     )
+                    Spacer(modifier = Modifier.width(8.dp))
                     TextButton(
                         onClick = {
-                            newName = code.name // Reset bei Abbruch
-                            isEditing = false
+                            if (newName.isNotBlank()) {
+                                onRename(code.id, newName)
+                                isEditing = false
+                            }
                             keyboardController?.hide()
                         }
                     ) {
-                        Text("Abbrechen")
+                        Text("Save")
                     }
                 } else {
-                    Text(
-                        text = code.name,
-                        style = MaterialTheme.typography.titleMedium.copy(
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = code.name,
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
-                        ),
-                        modifier = Modifier.weight(1f)
-                    )
-                    IconButton(
-                        onClick = { isEditing = true }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Edit,
-                            contentDescription = "Namen bearbeiten"
                         )
                     }
-                }
-            }
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            if (showQRCode) {
-                // QR-Code anzeigen
-                val qrBitmap = remember(code.content) { generateQRCode(code.content) }
-                qrBitmap?.let { bitmap ->
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Image(
-                                bitmap = bitmap.asImageBitmap(),
-                                contentDescription = "QR-Code für ${code.name}",
-                                modifier = Modifier.size(280.dp)
+                    Row {
+                        IconButton(onClick = {
+                            newName = code.name
+                            isEditing = true
+                        }) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = "Rename"
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = "Tippe den Button um den QR-Code zu verstecken",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(onClick = { showQRCode = !showQRCode }) {
+                            Text(if (showQRCode) "Hide" else "Show")
+                        }
                     }
                 }
             }
 
-            Button(
-                onClick = { showQRCode = !showQRCode },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(if (showQRCode) "QR-Code verstecken" else "QR-Code anzeigen")
+            if (showQRCode && !isEditing) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    val qrBitmap = remember(code.content) {
+                        generateQRCode(code.content, 300)
+                    }
+                    qrBitmap?.let { bitmap ->
+                        Image(
+                            bitmap = bitmap.asImageBitmap(),
+                            contentDescription = "QR Code for ${code.name}",
+                            modifier = Modifier.size(300.dp)
+                        )
+                    }
+                }
             }
         }
-    }
-}
-
-fun generateQRCode(content: String): Bitmap? {
-    return try {
-        val writer = QRCodeWriter()
-        val bitMatrix = writer.encode(content, BarcodeFormat.QR_CODE, 512, 512)
-        val width = bitMatrix.width
-        val height = bitMatrix.height
-        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
-        for (x in 0 until width) {
-            for (y in 0 until height) {
-                bitmap.setPixel(x, y, if (bitMatrix[x, y]) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
-            }
-        }
-        bitmap
-    } catch (e: WriterException) {
-        e.printStackTrace()
-        null
     }
 }
 
@@ -317,6 +339,39 @@ fun EmptyState(modifier: Modifier = Modifier) {
         modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
-        Text("Noch keine QR-Codes gescannt. Drücke + um zu starten.")
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "No QR codes yet",
+                style = MaterialTheme.typography.headlineSmall,
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = "Tap the + button to scan your first QR code",
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+fun generateQRCode(content: String, size: Int): Bitmap? {
+    return try {
+        val writer = QRCodeWriter()
+        val bitMatrix = writer.encode(content, BarcodeFormat.QR_CODE, size, size)
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.RGB_565)
+
+        for (x in 0 until size) {
+            for (y in 0 until size) {
+                bitmap.setPixel(x, y, if (bitMatrix[x, y]) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
+            }
+        }
+        bitmap
+    } catch (e: WriterException) {
+        Log.e("QRCode", "Error generating QR code", e)
+        null
     }
 }
