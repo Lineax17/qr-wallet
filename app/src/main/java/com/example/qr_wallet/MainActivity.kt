@@ -253,19 +253,31 @@ fun QRCodeItem(
                 val qrBitmap = remember(code.content) { generateQRCode(code.content) }
                 qrBitmap?.let { bitmap ->
                     Column(
-                        horizontalAlignment = Alignment.CenterHorizontally
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Image(
-                            bitmap = bitmap.asImageBitmap(),
-                            contentDescription = "QR-Code für ${code.name}",
-                            modifier = Modifier.size(200.dp)
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Image(
+                                bitmap = bitmap.asImageBitmap(),
+                                contentDescription = "QR-Code für ${code.name}",
+                                modifier = Modifier.size(280.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            text = "Tippe um den QR-Code zu verstecken",
+                            text = "Tippe den Button um den QR-Code zu verstecken",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        Spacer(modifier = Modifier.height(8.dp))
                     }
                 }
             }
