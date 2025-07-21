@@ -1,7 +1,6 @@
 package com.example.qr_wallet
 
 import android.Manifest
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Log
@@ -23,17 +22,22 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import com.example.qr_wallet.ui.theme.QrwalletTheme
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val qrCodes = mutableStateListOf<String>()
+    private lateinit var codesWriter: CodesWriter
+
     private val requestCameraPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
@@ -47,13 +51,25 @@ class MainActivity : ComponentActivity() {
     private val scanQRCodeLauncher = registerForActivityResult(ScanContract()) { result ->
         if (result.contents != null) {
             qrCodes.add(result.contents)
+            // Speichere den neuen Code sofort
+            lifecycleScope.launch {
+                codesWriter.addQRCode(result.contents)
+            }
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        codesWriter = CodesWriter(this)
         enableEdgeToEdge()
         setContent {
+            // Lade gespeicherte QR-Codes beim Start
+            LaunchedEffect(Unit) {
+                val savedCodes = codesWriter.loadQRCodes()
+                qrCodes.clear()
+                qrCodes.addAll(savedCodes)
+            }
+
             QrwalletTheme {
                 QRWalletApp(
                     qrCodes = qrCodes,
@@ -81,8 +97,9 @@ class MainActivity : ComponentActivity() {
         val options = ScanOptions()
         options.setPrompt("QR-Code scannen")
         options.setBeepEnabled(true)
-        options.setOrientationLocked(false)
+        options.setOrientationLocked(true)  // Orientierung sperren
         options.setBarcodeImageEnabled(true)
+        options.setCaptureActivity(MyCaptureActivity::class.java)  // Benutzerdefinierte Activity verwenden
         scanQRCodeLauncher.launch(options)
     }
 }
