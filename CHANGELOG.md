@@ -2,6 +2,14 @@
 
 All notable changes to QR Wallet will be documented in this file.
 
+## [1.0.0] - 2025-07-22
+
+### Deskription
+- First stable release of QR Wallet
+
+### Added
+- JavaDoc comments in the codebase
+
 ## [0.0.3] - 2025-07-21
 
 ### Deskription
