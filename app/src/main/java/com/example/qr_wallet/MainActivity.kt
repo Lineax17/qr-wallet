@@ -717,14 +717,14 @@ fun QRCodeItem(
                     contentAlignment = Alignment.Center
                 ) {
                     val qrBitmap = remember(code.content) {
-                        generateQRCode(code.content, 300)
+                        generateQRCode(code.content, 200)
                     }
                     qrBitmap?.let { bitmap ->
                         Image(
                             bitmap = bitmap.asImageBitmap(),
                             contentDescription = "QR Code for ${code.name}",
                             modifier = Modifier
-                                .size(300.dp)
+                                .size(200.dp)
                                 .clickable {
                                     showFullscreenQR = true
                                 }
