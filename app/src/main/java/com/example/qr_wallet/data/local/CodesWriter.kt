@@ -1,39 +1,32 @@
-package com.example.qr_wallet
+package com.example.qr_wallet.data.local
 
 import android.content.Context
+import com.example.qr_wallet.data.model.QRCodeData
+import com.example.qr_wallet.data.model.QRCodeList
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
-import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.Json
 import java.io.File
 import java.io.IOException
 
-@Serializable
-data class QRCodeData(
-    val id: String,
-    val content: String,
-    val name: String,
-    val timestamp: Long = System.currentTimeMillis()
-)
-
-@Serializable
-data class QRCodeList(
-    val codes: List<QRCodeData> = emptyList()
-)
-
+/**
+ * Handles local file-based persistence for QR codes using JSON serialization.
+ * All I/O operations are performed on Dispatchers.IO for thread safety.
+ */
 class CodesWriter(private val context: Context) {
+
     private val fileName = "qr_codes.json"
     private val json = Json {
         prettyPrint = true
         ignoreUnknownKeys = true
     }
 
-    private fun getFile(): File {
-        return File(context.filesDir, fileName)
-    }
+    private fun getFile(): File = File(context.filesDir, fileName)
 
+    /**
+     * Saves the list of QR codes to local storage.
+     */
     suspend fun saveQRCodes(codes: List<QRCodeData>) {
         withContext(Dispatchers.IO) {
             try {
@@ -46,45 +39,42 @@ class CodesWriter(private val context: Context) {
         }
     }
 
+    /**
+     * Loads all QR codes from local storage.
+     */
     suspend fun loadQRCodes(): List<QRCodeData> {
         return withContext(Dispatchers.IO) {
             try {
                 val file = getFile()
-                if (!file.exists()) {
-                    return@withContext emptyList<QRCodeData>()
-                }
+                if (!file.exists()) return@withContext emptyList()
+
                 val jsonString = file.readText()
                 val qrCodeList = json.decodeFromString<QRCodeList>(jsonString)
                 qrCodeList.codes
             } catch (e: Exception) {
                 e.printStackTrace()
-                emptyList<QRCodeData>()
+                emptyList()
             }
         }
     }
 
+    /**
+     * Adds a new QR code with automatic name generation.
+     * Returns existing code if content already exists (duplicate prevention).
+     */
     suspend fun addQRCode(content: String, existingCodes: List<QRCodeData>): QRCodeData {
         return withContext(Dispatchers.IO) {
             try {
                 // Prevent duplicates
-                val existing = existingCodes.find { it.content == content }
-                if (existing != null) {
-                    return@withContext existing
-                }
+                existingCodes.find { it.content == content }?.let { return@withContext it }
 
-                // Create new QR code data with automatic name
-                val newId = generateId()
-                val newName = "QR Code ${existingCodes.size + 1}"
                 val newCode = QRCodeData(
-                    id = newId,
+                    id = generateId(),
                     content = content,
-                    name = newName
+                    name = "QR Code ${existingCodes.size + 1}"
                 )
 
-                val updatedCodes = existingCodes.toMutableList()
-                updatedCodes.add(newCode)
-                saveQRCodes(updatedCodes)
-
+                saveQRCodes(existingCodes + newCode)
                 newCode
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -93,15 +83,14 @@ class CodesWriter(private val context: Context) {
         }
     }
 
+    /**
+     * Updates the name of a QR code by ID.
+     */
     suspend fun updateQRCodeName(id: String, newName: String, allCodes: List<QRCodeData>) {
         withContext(Dispatchers.IO) {
             try {
                 val updatedCodes = allCodes.map { code ->
-                    if (code.id == id) {
-                        code.copy(name = newName)
-                    } else {
-                        code
-                    }
+                    if (code.id == id) code.copy(name = newName) else code
                 }
                 saveQRCodes(updatedCodes)
             } catch (e: Exception) {
@@ -110,7 +99,6 @@ class CodesWriter(private val context: Context) {
         }
     }
 
-    private fun generateId(): String {
-        return "qr_${System.currentTimeMillis()}_${(1000..9999).random()}"
-    }
+    private fun generateId(): String = "qr_${System.currentTimeMillis()}_${(1000..9999).random()}"
 }
+
